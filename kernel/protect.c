@@ -20,6 +20,7 @@
 
 /* 本文件内函数声明 */
 PRIVATE void init_idt_desc(unsigned char vector, u8 desc_type, int_handler handler, unsigned char privilege);
+PRIVATE void init_descriptor(struct descriptor * p_desc, u32 base, u32 limit, u16 attribute);
 
 
 /* 中断处理函数 */
@@ -166,26 +167,27 @@ PUBLIC void init_prot()
 	init_idt_desc(INT_VECTOR_SYS_CALL,	DA_386IGate,
 		      sys_call,			PRIVILEGE_USER);
 
-	/* Fill the TSS descriptor in GDT */
+	/* 填充 GDT 中 tss 这个描述符 */
 	memset(&tss, 0, sizeof(tss));
-	tss.ss0	= SELECTOR_KERNEL_DS;
-	init_desc(&gdt[INDEX_TSS],
-		  makelinear(SELECTOR_KERNEL_DS, &tss),
-		  sizeof(tss) - 1,
-		  DA_386TSS);
-	tss.iobase = sizeof(tss); /* No IO permission bitmap */
+	tss.ss0		= SELECTOR_KERNEL_DS;
+	init_descriptor(&gdt[INDEX_TSS],
+			vir2phys(seg2phys(SELECTOR_KERNEL_DS), &tss),
+			sizeof(tss) - 1,
+			DA_386TSS);
+	tss.iobase	= sizeof(tss);	/* 没有I/O许可位图 */
 
-	/* Fill the LDT descriptors of each proc in GDT  */
+	/* 填充 GDT 中进程的 LDT 的描述符 */
 	int i;
-	for (i = 0; i < NR_TASKS + NR_PROCS; i++) {
-		memset(&proc_table[i], 0, sizeof(struct proc));
-
-		proc_table[i].ldt_sel = SELECTOR_LDT_FIRST + (i << 3);
-		assert(INDEX_LDT_FIRST + i < GDT_SIZE);
-		init_desc(&gdt[INDEX_LDT_FIRST + i],
-			  makelinear(SELECTOR_KERNEL_DS, proc_table[i].ldts),
-			  LDT_SIZE * sizeof(struct descriptor) - 1,
-			  DA_LDT);
+	struct proc* p_proc = proc_table;
+	u16 selector_ldt = INDEX_LDT_FIRST << 3;
+	for (i = 0; i < NR_TASKS+NR_PROCS; i++){
+		init_descriptor(&gdt[selector_ldt>>3],
+				vir2phys(seg2phys(SELECTOR_KERNEL_DS),
+					proc_table[i].ldts),
+				LDT_SIZE * sizeof(struct descriptor) - 1,
+				DA_LDT);
+		p_proc++;
+		selector_ldt += 1 << 3;
 	}
 }
 
@@ -212,7 +214,7 @@ PUBLIC void init_idt_desc(unsigned char vector, u8 desc_type, int_handler handle
  *----------------------------------------------------------------------*
  由段名求绝对地址
  *======================================================================*/
-PUBLIC u32 seg2linear(u16 seg)
+PUBLIC u32 seg2phys(u16 seg)
 {
 	struct descriptor* p_dest = &gdt[seg >> 3];
 
@@ -224,7 +226,7 @@ PUBLIC u32 seg2linear(u16 seg)
  *----------------------------------------------------------------------*
  初始化段描述符
  *======================================================================*/
-PUBLIC void init_desc(struct descriptor * p_desc, u32 base, u32 limit, u16 attribute)
+PRIVATE void init_descriptor(struct descriptor * p_desc, u32 base, u32 limit, u16 attribute)
 {
 	p_desc->limit_low	= limit & 0x0FFFF;		/* 段界限 1		(2 字节) */
 	p_desc->base_low	= base & 0x0FFFF;		/* 段基址 1		(2 字节) */

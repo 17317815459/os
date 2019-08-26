@@ -226,6 +226,8 @@ struct part_ent {
 
 #define MAX_IO_BYTES	256	/* how many sectors does one IO can handle */
 
+#define RWBUF_SIZE 10                                      //缓存区大小为10个单位
+
 struct hd_cmd {
 	u8	features;
 	u8	count;
@@ -249,6 +251,20 @@ struct hd_info
 	struct part_info	logical[NR_SUB_PER_DRIVE];
 };
 
+
+struct buf_node{                                                    //缓存区单位
+	u8 secbuf[SECTOR_SIZE];                   //数据存放
+	//u8 valid;                                //是否有效
+	u32 sec_nr;								//扇区号
+	struct buf_node* next_node;              //下一个结点
+};
+
+struct rw_buf{                             //链表
+	struct buf_node* first_node;
+	struct buf_node* last_node;
+	u32 node_nr;
+
+};
 
 /***************/
 /* DEFINITIONS */
